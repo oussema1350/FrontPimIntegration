@@ -1,11 +1,13 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/screens/password_input.dart';
 import 'package:flutter_application_1/screens/text_input_field.dart';
+import 'package:flutter_application_1/services/api_service.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'package:dio/dio.dart'; // Import the dio package for MultipartFile
+import 'package:shared_preferences/shared_preferences.dart'; // Add shared_preferences for saving data locally
 
 const kBodyText = TextStyle(
   fontSize: 16,
@@ -14,7 +16,7 @@ const kBodyText = TextStyle(
 );
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({Key? key}) : super(key: key);
+  const SignUpScreen({super.key});
 
   @override
   _SignUpScreenState createState() => _SignUpScreenState();
@@ -30,6 +32,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   final ImagePicker _picker = ImagePicker();
 
+  // Pick image function
   Future<void> _pickImage() async {
     try {
       final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
@@ -46,37 +49,95 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  void _submitForm() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final apiService = ApiService();
-      final signUpResponse = await apiService.signUp(
-        _firstNameController.text,
-        _emailController.text,
-        _passwordController.text,
-        _profilePicture != null ? MultipartFile.fromFileSync(_profilePicture!.path) : null,
-      );
-
-      if (signUpResponse != null) {
-        _isSuccess = true;
-        _showSnackBar('Sign Up Successful!', Colors.green);
-      } else {
-        _isSuccess = false;
-        _showSnackBar('Sign Up failed. Please try again.', Colors.red);
-      }
-    } catch (e) {
-      _isSuccess = false;
-      _showSnackBar('An error occurred: $e', Colors.red);
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+  // Save user data to SharedPreferences
+  Future<void> _saveUserData(String name, String email, String profilePicture) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('name', name);
+    await prefs.setString('email', email);
+    await prefs.setString('profilePicture', profilePicture);
   }
 
+  // Submit the form and make the API call
+  void _submitForm() async {
+  final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+  if (!emailRegex.hasMatch(_emailController.text)) {
+    _showSnackBar('Please enter a valid email address.', Colors.red);
+    return;
+  }
+
+  // Validate input fields first
+  if (_firstNameController.text.isEmpty ||
+      _emailController.text.isEmpty ||
+      _passwordController.text.isEmpty ||
+      _profilePicture == null
+      ) {
+    _showSnackBar('Please fill in all fields.', Colors.red);
+    return;
+  }
+
+  setState(() {
+    _isLoading = true;
+  });
+
+  try {
+    final apiService = ApiService();
+    
+    // Handle file upload
+    MultipartFile? profilePictureFile;
+    if (_profilePicture != null) {
+      try {
+        // When preparing your profile picture in SignUp_Screen.dart:
+profilePictureFile = await MultipartFile.fromFile(
+  _profilePicture!.path,
+  filename: _profilePicture!.path.split('/').last,
+  contentType: MediaType.parse('image/jpeg'), // Explicitly set content type
+);
+        print('Profile picture prepared for upload: ${profilePictureFile.filename}');
+      } catch (e) {
+        print('Error preparing profile picture: $e');
+        // Continue with signup even if image preparation fails
+      }
+    }
+    
+    final signUpResponse = await apiService.signUp(
+      _firstNameController.text,
+      _emailController.text,
+      _passwordController.text,
+      profilePictureFile,
+    );
+
+    if (signUpResponse != null) {
+      setState(() {
+        _isSuccess = true;
+      });
+      _showSnackBar('Sign Up Successful!', Colors.green);
+
+      // Save the user data locally after successful sign-up
+      await _saveUserData(
+        _firstNameController.text,
+        _emailController.text,
+        _profilePicture != null ? _profilePicture!.path : '',
+      );
+
+      // Wait briefly to show success state
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Navigate to login screen
+      Navigator.pushReplacementNamed(context, '/signin');
+    } else {
+      _showSnackBar('Sign Up failed. Please try again.', Colors.red);
+    }
+  } catch (e) {
+    print('Error during signup: $e');
+    _showSnackBar('An error occurred: $e', Colors.red);
+  } finally {
+    setState(() {
+      _isLoading = false;
+    });
+  }
+}
+
+  // Show snackbar with message
   void _showSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -92,44 +153,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // Image de fond
+            // Background image
             Container(
               decoration: const BoxDecoration(
                 image: DecorationImage(
-                  image: AssetImage('asset/images/test.jpg'), // Vérifie le chemin de ton image
+                  image: AssetImage(
+                      'asset/images/test.jpg'), // Replace with your background image path
                   fit: BoxFit.cover,
                 ),
               ),
             ),
-            // Effet de flou pour améliorer la lisibilité
+            // Overlay for better readability
             Container(
               color: Colors.black.withOpacity(0.5),
             ),
-            // Contenu principal
+            // Main content
             SingleChildScrollView(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const SizedBox(height: 80),
-                  // Logo avec fond transparent
-                  Center(
-                    child: GestureDetector(
-                      onTap: _pickImage,
-                      child: CircleAvatar(
-                        radius: 80,
-                        backgroundImage: _profilePicture != null ? FileImage(_profilePicture!) : null,
-                        child: _profilePicture == null
-                            ? Icon(
-                                Icons.camera_alt,
-                                size: 50,
-                                color: Colors.white,
-                              )
-                            : null,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Titre principal
+                  // Main Title
                   const Center(
                     child: Text(
                       'Sign Up',
@@ -141,7 +185,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                   ),
                   const SizedBox(height: 40),
-                  // Formulaire de création de compte
+                  // Profile Picture
+                  Center(
+                    child: GestureDetector(
+                      onTap: _pickImage,
+                      child: CircleAvatar(
+                        radius: 80,
+                        backgroundImage: _profilePicture != null
+                            ? FileImage(_profilePicture!)
+                            : null,
+                        child: _profilePicture == null
+                            ? const Icon(
+                                Icons.camera_alt,
+                                size: 50,
+                                color: Colors.white,
+                              )
+                            : null,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Sign Up Form
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 30.0),
                     child: Column(
@@ -171,7 +235,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           inputAction: TextInputAction.done,
                         ),
                         const SizedBox(height: 30),
-                        // Bouton de création de compte avec animation
+                        // Submit Button with animation
                         Center(
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 500),
@@ -203,14 +267,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  // Retour à la page de connexion avec Login en bleu
+                  // Link to Login page
                   GestureDetector(
                     onTap: () {
                       Navigator.pop(context);
                     },
                     child: Container(
                       decoration: const BoxDecoration(
-                        border: Border(bottom: BorderSide(width: 1, color: Colors.transparent)),
+                        border: Border(
+                            bottom: BorderSide(
+                                width: 1, color: Colors.transparent)),
                       ),
                       child: RichText(
                         text: TextSpan(
@@ -219,7 +285,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             const TextSpan(text: 'Already have an account? '),
                             TextSpan(
                               text: 'Login',
-                              style: kBodyText.copyWith(color: Colors.blue, fontWeight: FontWeight.bold),
+                              style: kBodyText.copyWith(
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),

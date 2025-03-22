@@ -1,75 +1,179 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter_application_1/models/LoginResponse.dart';
 import 'package:flutter_application_1/models/SignUpResponse.dart';
+import 'package:flutter_application_1/models/article.dart';
+import 'package:flutter_application_1/models/chatRoom.entity.dart';
+import 'package:flutter_application_1/config/app-config.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  final Dio _dio = Dio();
-  static const String BASE_URL = "http://192.168.1.18:3000/"; // Use your local network IP address
-
+  final Dio _dio = Dio(); // Dio instance for APIs
+  final Dio _dioAnalysis = Dio(); // Separate Dio instance for analysis endpoint
+  
   ApiService() {
-    _dio.options.baseUrl = BASE_URL;
+    // Configure the main Dio instance
+    _dio.options.baseUrl = AppConfig.BASE_URL;
     _dio.options.headers = {
       'Content-Type': 'application/json',
     };
+    _dio.options.connectTimeout = const Duration(seconds: 10);
+    _dio.options.receiveTimeout = const Duration(seconds: 10);
+
+    // Configure the separate Dio instance for the analysis endpoint
+    _dioAnalysis.options.baseUrl = AppConfig.ANALYSIS_URL;
+    _dioAnalysis.options.headers = {
+      'Content-Type': 'application/json',
+    };
+    _dioAnalysis.options.connectTimeout = const Duration(seconds: 10);
+    _dioAnalysis.options.receiveTimeout = const Duration(seconds: 15);
+    
+    // Ajouter un proxy pour aider à la connexion
+    (_dioAnalysis.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+      final client = HttpClient();
+      client.findProxy = (uri) {
+        // Force toutes les connexions à être directes
+        return "DIRECT";
+      };
+      // Ignorer les erreurs de certificat - utile si votre serveur utilise des certificats auto-signés
+      client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+      return client;
+    };
+    
+    print('ApiService initialized with base URL: ${AppConfig.BASE_URL}');
+    print('Analysis service URL: ${AppConfig.ANALYSIS_URL}');
   }
 
-  // Sign up method
   Future<SignUpResponse?> signUp(String name, String email, String password, [MultipartFile? profilePicture]) async {
-    try {
-      FormData formData = FormData.fromMap({
-        'name': name,
-        'email': email,
-        'password': password,
-        if (profilePicture != null) 'profilePicture': profilePicture,
-      });
+  try {
+    print('Starting signup process for email: $email');
+    
+    // Create form data with proper encoding for multipart request
+    final FormData formData = FormData.fromMap({
+      'name': name,
+      'email': email,
+      'password': password,
+      if (profilePicture != null) 'profilePicture': profilePicture,
+    });
 
-      print('Sending signup request with data: ${formData.fields}');
+    print('Sending signup request with data: ${formData.fields}');
+    print('File attached: ${profilePicture != null ? 'Yes' : 'No'}');
+    
+    // Ensure proper headers are set for multipart form data
+    final response = await _dio.post(
+      'auth/signup',
+      data: formData,
+      options: Options(
+        contentType: 'multipart/form-data',
+        headers: {
+          'Accept': 'application/json',
+        },
+        // Increase upload timeout for image upload
+        sendTimeout: const Duration(seconds: 30),
+      ),
+    );
 
-      final response = await _dio.post(
-        'auth/signup',
-        data: formData,
-      );
+    print('Signup response status: ${response.statusCode}');
+    print('Signup response data: ${response.data}');
 
-      print('Signup response status: ${response.statusCode}');
-      print('Signup response data: ${response.data}');
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return SignUpResponse.fromJson(response.data);
-      } else {
-        print('Failed to sign up: ${response.statusCode} ${response.statusMessage}');
-        throw Exception('Failed to sign up');
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      try {
+        // Convert response data to a proper Map<String, dynamic>
+        final Map<String, dynamic> responseData = Map<String, dynamic>.from(response.data);
+        
+        // Verify the response contains the expected structure
+        if (!responseData.containsKey('message') || !responseData.containsKey('user')) {
+          print('Invalid response format: missing required fields');
+          return null;
+        }
+        
+        // Use the generated fromJson method
+        return SignUpResponse.fromJson(responseData);
+      } catch (parseError) {
+        print('Error parsing signup response: $parseError');
+        return null;
       }
-    } catch (e) {
-      print('Error during signup: $e');
+    } else {
+      print('Failed to sign up: ${response.statusCode} ${response.statusMessage}');
       return null;
     }
+  } catch (e) {
+    print('Error during signup: $e');
+    if (e is DioException) {
+      print('Request: ${e.requestOptions.uri}');
+      if (e.response != null) {
+        print('Response code: ${e.response?.statusCode}');
+        print('Response data: ${e.response?.data}');
+      }
+      print('Error type: ${e.type}');
+      
+      // Provide more specific error handling
+      if (e.type == DioExceptionType.connectionTimeout) {
+        print('Connection timeout - check server availability');
+      } else if (e.type == DioExceptionType.badResponse && e.response?.statusCode == 401) {
+        print('Unauthorized - check authentication requirements');
+      }
+    }
+    return null;
   }
+}
 
   // Login method
   Future<LoginResponse?> login(String email, String password) async {
-    try {
-      final response = await _dio.post(
-        'auth/login',
-        data: {
-          'email': email,
-          'password': password,
-        },
-      );
+  try {
+    print('Attempting login for email: $email');
+    final response = await _dio.post(
+      'auth/login',
+      data: {
+        'email': email,
+        'password': password,
+      },
+    );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        print('Login response data: ${response.data}');
-        return LoginResponse.fromJson(response.data);
-      } else {
-        print('Failed to login: ${response.statusCode} ${response.statusMessage}');
-        throw Exception('Failed to login');
+    print('Login response status: ${response.statusCode}');
+    print('Login response data: ${response.data}');
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      // Ensure all required fields are present in the response
+      if (response.data['accessToken'] == null || 
+          response.data['refreshToken'] == null || 
+          response.data['userId'] == null) {
+        print('Invalid response format: missing required fields');
+        return null;
       }
-    } catch (e) {
-      print('Error: $e');
+      
+      // Convert response data to a proper Map<String, dynamic>
+      final Map<String, dynamic> responseData = Map<String, dynamic>.from(response.data);
+      
+      // Save tokens in shared preferences for future use
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('accessToken', responseData['accessToken']);
+      await prefs.setString('refreshToken', responseData['refreshToken']);
+      await prefs.setString('userId', responseData['userId']);
+      
+      // Use the generated fromJson method
+      return LoginResponse.fromJson(responseData);
+    } else {
+      print('Failed to login: ${response.statusCode} ${response.statusMessage}');
       return null;
     }
+  } catch (e) {
+    print('Error during login: $e');
+    if (e is DioException) {
+      print('Request: ${e.requestOptions.uri}');
+      if (e.response != null) {
+        print('Response code: ${e.response?.statusCode}');
+        print('Response data: ${e.response?.data}');
+      }
+      print('Error type: ${e.type}');
+    }
+    return null;
   }
-
+}
   // Forgot password method
   Future<void> forgotPassword(String email) async {
     try {
@@ -93,6 +197,247 @@ class ApiService {
     } catch (e) {
       print('Error during forgot password request: $e');
       throw Exception('Error during forgot password request');
+    }
+  }
+
+  // Analyze method
+  Future<String?> analyzeText(String prompt) async {
+    try {
+      print('Making API call to: ${_dioAnalysis.options.baseUrl}generate with prompt: $prompt');
+      
+      // S'assurer que les données sont correctement formatées
+      final Map<String, dynamic> requestData = {
+        'prompt': prompt,
+      };
+      
+      print('Request data: $requestData');
+      
+      final response = await _dioAnalysis.post(
+        'generate', // Endpoint for analysis
+        data: requestData,
+      );
+
+      print('Response received: ${response.statusCode}');
+      print('Response body: ${response.data}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (response.data != null && response.data['response'] != null) {
+          return response.data['response'];
+        } else {
+          print('Missing response field in data: ${response.data}');
+          return "Error: Invalid response format from server";
+        }
+      } else {
+        print('Failed to analyze text: ${response.statusCode} ${response.statusMessage}');
+        throw Exception('Failed to analyze text');
+      }
+    } catch (e) {
+      print('Error during analyze request: $e');
+      if (e is DioException) {
+        print('Request: ${e.requestOptions.uri}');
+        print('Response: ${e.response?.data}');
+        print('Error type: ${e.type}');
+        
+        // Messages d'erreur plus spécifiques selon le type d'erreur
+        if (e.type == DioExceptionType.connectionTimeout) {
+          return "Connection timeout. Please check your internet connection.";
+        } else if (e.type == DioExceptionType.connectionError) {
+          return "Connection error. Please make sure the server is running and accessible.";
+        } else if (e.type == DioExceptionType.badResponse) {
+          return "Server returned error: ${e.response?.statusCode} ${e.response?.statusMessage}";
+        }
+      }
+      return "Error: Failed to connect to the analysis server. Please try again later.";
+    }
+  }
+
+  static void debugImageUrl(String? profilePicture) {
+  if (profilePicture == null || profilePicture.isEmpty) {
+    print('Empty profile picture path, using default');
+    print('Default URL: ${AppConfig.DEFAULT_PROFILE_PICTURE}');
+  } else {
+    // Check if the profile picture already has the full URL
+    if (profilePicture.startsWith('http')) {
+      print('Profile picture is already a full URL: $profilePicture');
+    } else {
+      // Check if the profile picture starts with a slash
+      String fullUrl = profilePicture.startsWith('/')
+          ? AppConfig.BASE_URL + profilePicture.substring(1)
+          : AppConfig.BASE_URL + profilePicture;
+      print('Constructed profile picture URL: $fullUrl');
+    }
+  }
+}
+
+// Then modify the imageProfileLink method to handle paths better
+static String imageProfileLink(String? profilePicture) {
+  debugImageUrl(profilePicture);
+  
+  if (profilePicture == null || profilePicture.isEmpty) {
+    return AppConfig.DEFAULT_PROFILE_PICTURE;
+  }
+  
+  // Check if the profile picture already has the full URL
+  if (profilePicture.startsWith('http')) {
+    return profilePicture;
+  }
+  
+  // Ensure proper path joining by handling slashes
+  return profilePicture.startsWith('/')
+      ? AppConfig.BASE_URL + profilePicture.substring(1)
+      : AppConfig.BASE_URL + profilePicture;
+}
+
+  // Edit profile method
+  Future<Map<String, dynamic>> editProfile({
+    required String name,
+    required String email,
+    String? oldPassword,
+    String? newPassword,
+    MultipartFile? profilePicture,
+    required String token,
+  }) async {
+    try {
+      FormData formData = FormData.fromMap({
+        'name': name,
+        'email': email,
+        if (oldPassword != null) 'oldPassword': oldPassword,
+        if (newPassword != null) 'newPassword': newPassword,
+        if (profilePicture != null) 'profilePicture': profilePicture,
+      });
+
+      final response = await _dio.put(
+        'auth/edit-profile/:id',
+        data: formData,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return response.data;
+      } else {
+        throw Exception('Failed to update profile');
+      }
+    } catch (e) {
+      print('Error updating profile: $e');
+      throw Exception('Error updating profile');
+    }
+  }
+
+  Future<List<ChatRoom>> getChatRooms() async {
+    final response = await http.get(Uri.parse('${AppConfig.BASE_URL}chatrooms'));
+
+    if (response.statusCode == 200) {
+      List<dynamic> data = json.decode(response.body);
+      return data.map((json) => ChatRoom.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to load chat rooms');
+    }
+  }
+
+   Future<User?> getUserByToken(String token) async {
+  try {
+    print('Verifying token and getting user info...');
+    final response = await _dio.post(
+      'auth/verify-token',
+      data: {
+        'token': token,
+      },
+    );
+    
+    print('User verification response status: ${response.statusCode}');
+    print('User verification response data: ${response.data}');
+    
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      if (response.data == null) {
+        print('Server returned empty response for token verification');
+        return null;
+      }
+      
+      try {
+        // Make sure the response is a Map<String, dynamic>
+        final userData = response.data is Map 
+            ? Map<String, dynamic>.from(response.data)
+            : null;
+            
+        if (userData == null) {
+          print('Invalid user data format');
+          return null;
+        }
+        
+        // Create User object from the response
+        return User.fromJson(userData);
+      } catch (parseError) {
+        print('Error parsing user data: $parseError');
+        return null;
+      }
+    } else {
+      print('Token verification failed: ${response.statusCode}');
+      return null;
+    }
+  } catch (e) {
+    print('Error during token verification: $e');
+    if (e is DioException) {
+      print('Request: ${e.requestOptions.uri}');
+      if (e.response != null) {
+        print('Response code: ${e.response?.statusCode}');
+        print('Response data: ${e.response?.data}');
+      }
+    }
+    return null;
+  }
+}
+
+Future<List<Article>> fetchArticles() async {
+    // The correct endpoint is /news/articles based on your NestJS controller
+    final url = '${AppConfig.BASE_URL}news/articles';
+    print("📡 Fetching from: $url");
+
+    try {
+      // Using Dio for consistent handling with other methods
+      final response = await _dio.get('news/articles');
+
+      if (response.statusCode == 200) {
+        print("✅ Data fetched successfully");
+        
+        if (response.data is List) {
+          List<dynamic> articlesData = response.data;
+          print("📦 Fetched ${articlesData.length} articles");
+          
+          return articlesData.map((json) => Article.fromJson(json)).toList();
+        } else {
+          print("❌ Unexpected response format: ${response.data}");
+          throw Exception('Unexpected response format');
+        }
+      } else {
+        print("❌ Failed with status: ${response.statusCode}");
+        throw Exception('Failed to load articles');
+      }
+    } catch (e) {
+      print("🔥 Error fetching articles: $e");
+      
+      // Retry with fallback method using http package
+      try {
+        print("🔄 Retrying with fallback method...");
+        final httpResponse = await http
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 10));
+            
+        if (httpResponse.statusCode == 200) {
+          print("✅ Data fetched successfully with fallback");
+          List<dynamic> data = json.decode(httpResponse.body);
+          return data.map((json) => Article.fromJson(json)).toList();
+        } else {
+          print("❌ Fallback method also failed with status: ${httpResponse.statusCode}");
+          throw Exception('Failed to load articles');
+        }
+      } catch (retryError) {
+        print("🔥 Fallback method also failed: $retryError");
+        throw Exception('Error fetching articles: $retryError');
+      }
     }
   }
 }
