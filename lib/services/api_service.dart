@@ -61,7 +61,7 @@ Future<String?> analyzeMedicationImage(String imageUrl) async {
     print('Using formatted URL: $imageUrl');
     
     // Use localhost with port 3000 directly, since that works in Postman
-    final String directUrl = "http://192.168.100.37:3000/medications/analyze";
+    final String directUrl = "http://169.254.33.76:3000/medications/analyze";
     print('Sending request to: $directUrl');
     
     // Create request payload exactly matching what works in Postman
@@ -518,6 +518,58 @@ Future<List<Article>> fetchArticles() async {
       } catch (retryError) {
         print("🔥 Fallback method also failed: $retryError");
         throw Exception('Error fetching articles: $retryError');
+      }
+    }
+  }
+
+  // Like an article
+ Future<Article> likeArticle(String articleId) async {
+    // Try first with the AppConfig URL
+    try {
+      final response = await _dio.post('news/articles/$articleId/like');
+      
+      if (response.statusCode == 200) {
+        return Article.fromJson(response.data);
+      } else {
+        throw Exception('Failed to like article');
+      }
+    } catch (e) {
+      print("Error liking article via main API: $e");
+      
+      // Fallback to dedicated news service using AppConfig
+      final url = '${AppConfig.BASE_URL}news/articles/$articleId/like';
+      final response = await http.post(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        return Article.fromJson(jsonDecode(response.body));
+      } else {
+        throw Exception('Failed to like article');
+      }
+    }
+  }
+
+  // Dislike an article
+  Future<Article> dislikeArticle(String articleId) async {
+    // Try first with the AppConfig URL
+    try {
+      final response = await _dio.post('news/articles/$articleId/dislike');
+      
+      if (response.statusCode == 200) {
+        return Article.fromJson(response.data);
+      } else {
+        throw Exception('Failed to dislike article');
+      }
+    } catch (e) {
+      print("Error disliking article via main API: $e");
+      
+      // Fallback to dedicated news service using AppConfig
+      final url = '${AppConfig.BASE_URL}news/articles/$articleId/dislike';
+      final response = await http.post(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        return Article.fromJson(jsonDecode(response.body));
+      } else {
+        throw Exception('Failed to dislike article');
       }
     }
   }

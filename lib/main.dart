@@ -3,19 +3,28 @@ import 'package:flutter_application_1/models/SignUpResponse.dart';
 import 'package:flutter_application_1/screens/ForgotPassword.dart';
 import 'package:flutter_application_1/screens/HomeScreen.dart';
 import 'package:flutter_application_1/screens/SignUp_Screen.dart';
-import 'package:flutter_application_1/screens/health_assistant_screen.dart'; // Add this import
+import 'package:flutter_application_1/screens/health_assistant_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/main_screen.dart';
 import 'package:flutter_application_1/screens/news_screen.dart';
 import 'package:flutter_application_1/screens/profile_page.dart';
+import 'package:flutter_application_1/viewmodels/news_viewmodel.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'services/api_service.dart'; // Import MainScreen
+import 'services/api_service.dart';
 
 void main() async {
-  // Ensure binding is initialized before calling SharedPreferences
-  WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized(); // Initialize Flutter binding for async main
+
+  // Initialize Hive
+  await Hive.initFlutter();
+
+  // Open all required Hive boxes
+  await Hive.openBox('readArticlesBox');
+  await Hive.openBox('userReactionsBox'); // New box for tracking like/dislike
 
   // Check if the user is logged in by reading SharedPreferences
   SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -27,8 +36,14 @@ void main() async {
     loggedUser = result;
   }
 
-  // Run the app and pass the login status to MyApp
-  runApp(MyApp(loggedUser: loggedUser));
+  // Run the app with the NewsViewModel provider
+  runApp(
+    // Add NewsViewModel at the app level
+    ChangeNotifierProvider(
+      create: (_) => NewsViewModel(),
+      child: MyApp(loggedUser: loggedUser),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {

@@ -1,132 +1,241 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 import '../models/article.dart';
-import 'package:url_launcher/url_launcher_string.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:share_plus/share_plus.dart';
 
 class ArticleDetailScreen extends StatelessWidget {
   final Article article;
 
-  ArticleDetailScreen({required this.article});
+  const ArticleDetailScreen({super.key, required this.article});
 
-  // Function to launch the URL
-  void _launchURL(String url) async {
-    if (await canLaunchUrlString(url)) {
-      await launchUrlString(url);
-    } else {
+  Future<void> _launchURL(String url) async {
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       throw 'Could not launch $url';
     }
   }
 
+  Future<void> _launchAuthorWikipedia(String authorName) async {
+    final searchQuery = Uri.encodeComponent(authorName);
+    final wikiUrl = 'https://en.wikipedia.org/wiki/$searchQuery';
+
+    try {
+      final response = await http.get(Uri.parse(wikiUrl));
+      if (response.statusCode == 200 &&
+          !response.body.contains('may refer to') &&
+          !response.body.contains('search')) {
+        await _launchURL(wikiUrl);
+      } else {
+        await _launchURL('https://www.google.com/search?q=$searchQuery');
+      }
+    } catch (_) {
+      await _launchURL('https://www.google.com/search?q=$searchQuery');
+    }
+  }
+
+  void _showShareOptions(BuildContext context, String url) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                height: 4,
+                width: 40,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).dividerColor,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _shareIcon(context, FontAwesomeIcons.whatsapp, "WhatsApp", () => Share.share(url)),
+                  _shareIcon(context, FontAwesomeIcons.facebook, "Facebook", () => Share.share(url)),
+                  _shareIcon(context, Icons.email, "Email", () => Share.share(url)),
+                  _shareIcon(context, Icons.link, "Copy", () async {
+                    await Clipboard.setData(ClipboardData(text: url));
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Link copied!')),
+                    );
+                  }),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _shareIcon(BuildContext context, IconData icon, String label, VoidCallback onTap) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(50),
+          child: CircleAvatar(
+            radius: 26,
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+            child: Icon(icon, color: Theme.of(context).colorScheme.onPrimaryContainer, size: 28),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: const Color(0xFF0077B6), // Healthcare blue
         title: Text(
           article.title,
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
+          style: theme.textTheme.titleLarge?.copyWith(color: Colors.white),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF004D40), Color(0xFF26A69A)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (article.urlToImage != null)
-              Container(
-                width: double.infinity,
-                height: 250,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-                ),
+            if (article.urlToImage != null && article.urlToImage!.isNotEmpty)
+              Hero(
+                tag: article.urlToImage!,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
-                  child: Image.network(
-                    article.urlToImage!,
+                  borderRadius: BorderRadius.circular(16),
+                  child: FadeInImage.assetNetwork(
+                    placeholder: 'assets/placeholder.png',
+                    image: article.urlToImage!,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: double.infinity,
-                        height: 250,
-                        color: Colors.grey[300],
-                        child: Icon(Icons.image_not_supported, size: 50),
-                      );
-                    },
+                    height: 250,
+                    width: double.infinity,
+                    imageErrorBuilder: (context, error, stackTrace) => Container(
+                      color: Colors.grey[300],
+                      alignment: Alignment.center,
+                      child: Icon(Icons.broken_image, size: 60, color: Colors.grey[600]),
+                    ),
                   ),
                 ),
+              )
+            else
+              Container(
+                height: 250,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.image_not_supported, size: 60),
               ),
-            SizedBox(height: 20),
-            Text(
-              article.title,
-              style: TextStyle(
-                  fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black87),
-            ),
-            SizedBox(height: 10),
-            Text(
-              article.description,
-              style: TextStyle(fontSize: 18, fontStyle: FontStyle.italic, color: Colors.grey),
-            ),
-            SizedBox(height: 15),
-            if (article.author != null)
-              Text(
-                "By ${article.author}",
-                style: TextStyle(fontSize: 16, color: Colors.grey[700]),
-              ),
-            SizedBox(height: 8),
-            Text(
-              "Source: ",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
-            ),
-            GestureDetector(
-              onTap: () => _launchURL(article.url),
+            const SizedBox(height: 20),
+
+            // Title and Description
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
               child: Text(
-                article.url,
-                style: TextStyle(fontSize: 16, color: Colors.blue, decoration: TextDecoration.underline),
+                article.title,
+                key: ValueKey(article.title),
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 10),
+            AnimatedOpacity(
+              opacity: 1.0,
+              duration: const Duration(milliseconds: 600),
+              child: Text(
+                article.description,
+                style: theme.textTheme.bodyLarge?.copyWith(fontStyle: FontStyle.italic, color: Colors.grey[600]),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Author Card
+            if (article.author != null)
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                child: ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(article.author!),
+                  subtitle: const Text('Tap to view more'),
+                  onTap: () => _launchAuthorWikipedia(article.author!),
+                ),
+              ),
+
+            // Source Card
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              child: ListTile(
+                leading: const Icon(Icons.link),
+                title: Text('Source'),
+                subtitle: Text(article.url),
+                onTap: () => _launchURL(article.url),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Article Content
             Text(
               article.content,
-              style: TextStyle(fontSize: 18, height: 1.6, color: Colors.black87),
+              style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
             ),
-            SizedBox(height: 30),
-            Center(
-              child: ElevatedButton(
-                onPressed: () => _launchURL(article.url),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal,
-                  padding: EdgeInsets.symmetric(vertical: 15, horizontal: 40),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+
+            const SizedBox(height: 30),
+
+            // Action Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => _launchURL(article.url),
+                  icon: const Icon(Icons.read_more, color: Colors.white),
+                  label: const Text('Read More', style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0077B6),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  elevation: 5,
                 ),
-                child: Text(
-                  "Read Full Article",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.white),
+                ElevatedButton.icon(
+                  onPressed: () => _showShareOptions(context, article.url),
+                  icon: const Icon(Icons.share, color: Colors.white),
+                  label: const Text('Share', style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0096C7),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ),

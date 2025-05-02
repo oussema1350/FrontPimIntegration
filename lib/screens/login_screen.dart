@@ -7,6 +7,7 @@ import 'package:flutter_application_1/screens/text_input_field.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 // Définition de kBodyText
 const kBodyText = TextStyle(
@@ -27,10 +28,47 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   final bool _isSuccess = false;
+  bool _rememberCredentials = true; // Default to true for better UX
+  
+  // Create storage for secure credentials
+  final _secureStorage = const FlutterSecureStorage();
 
   @override
   void initState() {
     super.initState();
+    _loadSavedCredentials();
+  }
+
+  // Load saved credentials when app starts
+  Future<void> _loadSavedCredentials() async {
+    try {
+      final savedEmail = await _secureStorage.read(key: 'secure_email');
+      final savedPassword = await _secureStorage.read(key: 'secure_password');
+      
+      if (savedEmail != null && savedPassword != null) {
+        setState(() {
+          _emailController.text = savedEmail;
+          _passwordController.text = savedPassword;
+        });
+        
+        print('Credentials loaded successfully');
+      }
+    } catch (e) {
+      print('Error loading credentials: $e');
+    }
+  }
+
+  // Save credentials securely
+  Future<void> _saveCredentials(String email, String password) async {
+    if (_rememberCredentials) {
+      try {
+        await _secureStorage.write(key: 'secure_email', value: email);
+        await _secureStorage.write(key: 'secure_password', value: password);
+        print('Credentials saved securely');
+      } catch (e) {
+        print('Error saving credentials: $e');
+      }
+    }
   }
 
   // Submit form and perform login
@@ -58,7 +96,10 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       
       if (loginResponse != null) {
-        // Save user data to SharedPreferences - use consistent key name
+        // Save credentials securely after successful login
+        await _saveCredentials(_emailController.text, _passwordController.text);
+        
+        // Save user data to SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('accessToken', loginResponse.accessToken);
 
@@ -228,16 +269,46 @@ class _LoginScreenState extends State<LoginScreen> {
                           inputAction: TextInputAction.done,
                         ),
                         const SizedBox(height: 10),
-                        // Lien "Forgot Password"
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.pushNamed(context, '/forgot-password');
-                          },
-                          child: const Text(
-                            'Forgot Password',
-                            style: kBodyText,
-                          ),
+                        
+                        // Row with Remember Me and Forgot Password
+                        Row(
+                          children: [
+                            // Remember Me checkbox
+                            Checkbox(
+                              value: _rememberCredentials,
+                              onChanged: (value) {
+                                setState(() {
+                                  _rememberCredentials = value ?? true;
+                                });
+                              },
+                              checkColor: Colors.white,
+                              fillColor: MaterialStateProperty.resolveWith<Color>(
+                                (Set<MaterialState> states) {
+                                  if (states.contains(MaterialState.disabled)) {
+                                    return Colors.grey.withOpacity(.32);
+                                  }
+                                  return Colors.blue;
+                                },
+                              ),
+                            ),
+                            Text(
+                              'Remember Me',
+                              style: kBodyText.copyWith(fontSize: 14),
+                            ),
+                            const Spacer(),
+                            // Forgot Password link
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.pushNamed(context, '/forgot-password');
+                              },
+                              child: const Text(
+                                'Forgot Password',
+                                style: kBodyText,
+                              ),
+                            ),
+                          ],
                         ),
+                        
                         const SizedBox(height: 25),
                         // Bouton de connexion avec animation
                         Center(
