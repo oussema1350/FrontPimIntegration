@@ -47,7 +47,88 @@ class ApiService {
     print('ApiService initialized with base URL: ${AppConfig.BASE_URL}');
     print('Analysis service URL: ${AppConfig.ANALYSIS_URL}');
   }
+  
+  // Fixed analyzeMedicationImage method - works with your existing AppConfig
+Future<String?> analyzeMedicationImage(String imageUrl) async {
+  try {
+    print('Analyzing medication image: $imageUrl');
+    
+    // Ensure the URL is properly formatted
+    if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+      imageUrl = 'https://$imageUrl';
+    }
+    
+    print('Using formatted URL: $imageUrl');
+    
+    // Use localhost with port 3000 directly, since that works in Postman
+    final String directUrl = "http://192.168.100.37:3000/medications/analyze";
+    print('Sending request to: $directUrl');
+    
+    // Create request payload exactly matching what works in Postman
+    final requestData = {
+      'imageUrl': imageUrl
+    };
+    
+    print('Request payload: $requestData');
+    
+    // Create a dedicated Dio instance for this request
+    final Dio directDio = Dio();
+    
+    // Make the request with explicit headers
+    final response = await directDio.post(
+      directUrl,
+      data: requestData,
+      options: Options(
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        receiveTimeout: const Duration(seconds: 30),
+        sendTimeout: const Duration(seconds: 30),
+      ),
+    );
 
+    print('Response received: ${response.statusCode}');
+    print('Response body: ${response.data}');
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      // Extract the result field from the response
+      if (response.data != null && response.data['result'] != null) {
+        return response.data['result'];
+      } else {
+        print('Missing result field in data: ${response.data}');
+        return "Error: Invalid response format from server";
+      }
+    } else {
+      print('Failed to analyze image: ${response.statusCode} ${response.statusMessage}');
+      return "Error: Failed to analyze image (${response.statusCode})";
+    }
+  } catch (e) {
+    print('Error during medication analysis: $e');
+    if (e is DioException) {
+      print('Request: ${e.requestOptions.uri}');
+      print('Request data: ${e.requestOptions.data}');
+      
+      if (e.response != null) {
+        print('Response status: ${e.response?.statusCode}');
+        print('Response data: ${e.response?.data}');
+      }
+      
+      // Provide user-friendly error messages
+      if (e.type == DioExceptionType.connectionTimeout) {
+        return "Délai d'attente dépassé. Vérifiez votre connexion internet.";
+      } else if (e.type == DioExceptionType.connectionError) {
+        return "Erreur de connexion. Vérifiez que le serveur est accessible.";
+      } else if (e.type == DioExceptionType.badResponse) {
+        if (e.response?.statusCode == 404) {
+          return "Erreur 404: Le service d'analyse de médicaments n'a pas été trouvé sur le serveur.";
+        }
+        return "Erreur serveur (${e.response?.statusCode}). L'analyse n'a pas pu être effectuée.";
+      }
+    }
+    return "Erreur d'analyse: Le serveur a rencontré un problème. Réessayez plus tard.";
+  }
+}
   Future<SignUpResponse?> signUp(String name, String email, String password, [MultipartFile? profilePicture]) async {
   try {
     print('Starting signup process for email: $email');

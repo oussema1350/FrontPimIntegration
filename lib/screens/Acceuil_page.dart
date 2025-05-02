@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/AnalysisScreen.dart';
+import 'package:flutter_application_1/screens/medication_analysis_screen.dart';
 import 'package:flutter_application_1/screens/news_screen.dart';
 import 'package:flutter_application_1/screens/health_assistant_screen.dart'; // Ajoutez cet import
 import 'package:provider/provider.dart';
@@ -127,6 +128,42 @@ class AcceuilPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 20),
+                Center(
+  child: ElevatedButton(
+    onPressed: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const MedicationAnalysisScreen()),
+      );
+    },
+    style: ElevatedButton.styleFrom(
+      backgroundColor: Colors.blue,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+    ),
+    child: Container(
+      width: double.infinity,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(vertical: 15),
+      child: const Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.medication, color: Colors.white),
+          SizedBox(width: 10),
+          Text(
+            'Analyse de Médicament',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    ),
+  ),
+),
                 Center(
                   child: ElevatedButton(
                     onPressed: () {

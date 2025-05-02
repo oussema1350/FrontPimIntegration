@@ -1,6 +1,6 @@
 class AppConfig {
   // Configurez l'adresse IP de votre serveur ici
-  static const String SERVER_IP = "169.254.216.91";
+  static const String SERVER_IP = "192.168.100.37";
   
   // Ports des différents services
   static const int API_PORT = 3000;
