@@ -573,4 +573,196 @@ Future<List<Article>> fetchArticles() async {
       }
     }
   }
+
+  // Updated bookmark methods for ApiService class
+
+// Get all bookmarks for current user
+Future<List<Article>> getBookmarkedArticles() async {
+  try {
+    // Get token from shared preferences
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken') ?? '';
+    
+    if (token.isEmpty) {
+      print('No access token found for bookmarks request');
+      return [];
+    }
+    
+    print('Token for bookmarks: $token');
+    
+    // Add token to request headers
+    final response = await _dio.get(
+      'bookmarks',
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    
+    print('Bookmark response status: ${response.statusCode}');
+    
+    if (response.statusCode == 200) {
+      if (response.data is List) {
+        List<dynamic> articlesData = response.data;
+        print('Retrieved ${articlesData.length} bookmarked articles');
+        return articlesData.map((json) => Article.fromJson(json)).toList();
+      } else {
+        print('Unexpected response format: ${response.data}');
+        throw Exception('Unexpected response format');
+      }
+    } else {
+      print('Failed to load bookmarked articles: ${response.statusCode}');
+      throw Exception('Failed to load bookmarked articles');
+    }
+  } catch (e) {
+    print('Error fetching bookmarked articles: $e');
+    if (e is DioException) {
+      print('Request: ${e.requestOptions.uri}');
+      print('Headers: ${e.requestOptions.headers}');
+      if (e.response != null) {
+        print('Response code: ${e.response?.statusCode}');
+        print('Response data: ${e.response?.data}');
+      }
+    }
+    // Return empty list on error
+    return [];
+  }
+}
+
+// Add bookmark with improved error handling
+Future<bool> addBookmark(String articleId) async {
+  try {
+    // Get token from shared preferences
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken') ?? '';
+    
+    if (token.isEmpty) {
+      print('No access token found for adding bookmark');
+      return false;
+    }
+    
+    print('Adding bookmark for articleId: $articleId');
+    print('Using token: ${token.substring(0, 10)}...'); // Only log first part of token for security
+    
+    // Add token to request headers
+    final response = await _dio.post(
+      'bookmarks',
+      data: {
+        'articleId': articleId,
+      },
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    
+    print('Bookmark add response: ${response.statusCode}');
+    print('Bookmark add response body: ${response.data}');
+    
+    return response.statusCode == 200 || response.statusCode == 201;
+  } catch (e) {
+    print('Error adding bookmark: $e');
+    if (e is DioException) {
+      print('Request: ${e.requestOptions.uri}');
+      print('Request data: ${e.requestOptions.data}');
+      print('Headers: ${e.requestOptions.headers}');
+      if (e.response != null) {
+        print('DioError status: ${e.response?.statusCode}');
+        print('DioError message: ${e.response?.data}');
+      } else {
+        print('No response data available');
+      }
+    }
+    return false;
+  }
+}
+
+// Remove bookmark with improved error handling
+Future<bool> removeBookmark(String articleId) async {
+  try {
+    // Get token from shared preferences
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken') ?? '';
+    
+    if (token.isEmpty) {
+      print('No access token found for removing bookmark');
+      return false;
+    }
+    
+    print('Removing bookmark for articleId: $articleId');
+    
+    // Add token to request headers
+    final response = await _dio.delete(
+      'bookmarks/$articleId',
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    
+    print('Bookmark removal response: ${response.statusCode}');
+    
+    return response.statusCode == 200;
+  } catch (e) {
+    print('Error removing bookmark: $e');
+    if (e is DioException) {
+      print('Request: ${e.requestOptions.uri}');
+      if (e.response != null) {
+        print('DioError status: ${e.response?.statusCode}');
+        print('DioError message: ${e.response?.data}');
+      }
+    }
+    return false;
+  }
+}
+
+// Check if article is bookmarked with improved error handling
+Future<bool> isArticleBookmarked(String articleId) async {
+  try {
+    // Get token from shared preferences
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('accessToken') ?? '';
+    
+    if (token.isEmpty) {
+      print('No access token found for checking bookmark status');
+      return false;
+    }
+    
+    print('Checking bookmark status for articleId: $articleId');
+    
+    // Add token to request headers
+    final response = await _dio.get(
+      'bookmarks/check/$articleId',
+      options: Options(
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    
+    print('Bookmark check response: ${response.statusCode}');
+    
+    if (response.statusCode == 200) {
+      final result = response.data['isBookmarked'] ?? false;
+      print('Is bookmarked: $result');
+      return result;
+    } else {
+      print('Failed to check bookmark status: ${response.statusCode}');
+      return false;
+    }
+  } catch (e) {
+    print('Error checking bookmark status: $e');
+    if (e is DioException) {
+      print('Request: ${e.requestOptions.uri}');
+      if (e.response != null) {
+        print('DioError status: ${e.response?.statusCode}');
+        print('DioError message: ${e.response?.data}');
+      }
+    }
+    return false;
+  }
+}
 }
