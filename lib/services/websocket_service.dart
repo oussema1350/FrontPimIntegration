@@ -2,18 +2,19 @@ import 'dart:convert';
 import 'package:flutter_application_1/config/app-config.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-
+import 'package:http/http.dart' as http;
 class MessageResult {
   final String id;
   final UserResult user;
   final String message;
   final DateTime date;
-
+final bool isImage;
   MessageResult({
     required this.id,
     required this.user,
     required this.message,
     required this.date,
+required this.isImage,
   });
 
   // Factory method to create an instance from JSON
@@ -23,6 +24,7 @@ class MessageResult {
       user: UserResult.fromJson(json['sender_id']),
       message: json['message'],
       date: DateTime.parse(json['date']),
+      isImage: json['isImage'] ,
     );
   }
 }
@@ -32,12 +34,13 @@ class UserResult {
   final String name;
   final String email;
   final String profilePicture;
-
+  final DateTime? bannedUntil;
   UserResult({
     required this.id,
     required this.name,
     required this.email,
     required this.profilePicture,
+    this.bannedUntil,
   });
 
   factory UserResult.fromJson(Map<String, dynamic> json) {
@@ -46,6 +49,9 @@ class UserResult {
       name: json['name'],
       email: json['email'],
       profilePicture: json['profilePicture'] ?? '',
+      bannedUntil: json['bannedUntil'] != null
+          ? DateTime.parse(json['bannedUntil'])
+          : null,
     );
   }
 
@@ -55,6 +61,7 @@ class UserResult {
       'name': name,
       'email': email,
       'profilePicture': profilePicture,
+      'bannedUntil': bannedUntil?.toIso8601String(),
     };
   }
 }
@@ -63,11 +70,12 @@ class Message {
   final String message;
   final String senderId;
   final DateTime date;
-
+  final bool isImage;
   Message({
     required this.message,
     required this.senderId,
     required this.date,
+    required this.isImage,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -75,6 +83,7 @@ class Message {
       message: json['message'],
       senderId: json['sender'],
       date: DateTime.parse(json['date']),
+      isImage: json['isImage'] ?? false, 
     );
   }
 
@@ -83,6 +92,7 @@ class Message {
       'message': message,
       'sender_id': senderId,
       'date': date.toIso8601String(),
+      'isImage': isImage,
     };
   }
 }
@@ -148,6 +158,11 @@ class WebSocketService {
             onMessage("d", MessageResult.fromJson(content));
             return;
           }
+          if (type == "update") {
+            Map<String, dynamic> content = decodedMessage["content"];
+            onMessage("u", MessageResult.fromJson(content));
+            return;
+          }
         } catch (e) {
           print('❌ JSON Parsing Error: $e');
         }
@@ -161,4 +176,69 @@ class WebSocketService {
     channel.sink.close();
     print('❌ WebSocket Connection Closed');
   }
+
+  void editMessage(String messageId, String newMessage) {
+    final data = jsonEncode({
+      "message": {
+        "type": "update",
+        "content": {"id": messageId, "message": newMessage}
+      }
+    });
+    channel.sink.add(data);
+  }
+
+  void reportMessage(String myId, String messageId) {
+    final data = jsonEncode({
+      "message": {
+        "type": "report",
+        "content": {"reported_msg": messageId, "reported_user": myId}
+      }
+    });
+    channel.sink.add(data);
+  }
+
+  Future<String> translateText(String text, String targetLang,
+      {String sourceLang = 'auto'}) async {
+    final url = Uri.parse('https://translate.googleapis.com/translate_a/single?'
+        'client=gtx&'
+        'sl=$sourceLang&'
+        'tl=$targetLang&'
+        'dt=t&'
+        'q=${Uri.encodeComponent(text)}');
+
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data[0][0][0]; 
+    } else {
+      throw Exception('Failed to translate: ${response.reasonPhrase}');
+    }
+  }
+
+ Future<String> summarizeConversationWithCohere(
+    List<String> conversation, String apiKey) async {
+  final url = Uri.parse('https://api.cohere.ai/v1/summarize');
+
+  String inputText = conversation.join('\n');
+
+  final response = await http.post(
+    url,
+    headers: {
+      'Authorization': 'Bearer $apiKey',
+      'Content-Type': 'application/json',
+    },
+    body: jsonEncode({
+      'text': inputText,
+      'length': 'short', 
+    }),
+  );
+
+  if (response.statusCode == 200) {
+    final data = jsonDecode(response.body);
+    return data['summary'] ?? 'No summary found.';
+  } else {
+    throw Exception('Failed to summarize conversation: ${response.body}');
+  }
+}
 }

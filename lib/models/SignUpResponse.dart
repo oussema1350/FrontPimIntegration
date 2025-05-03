@@ -22,12 +22,13 @@ class User {
   final String name;
   final String email;
   final String? profilePicture;
-
+  final DateTime? bannedUntil;
   User({
     required this.id,
     required this.name,
     required this.email,
-    this.profilePicture,
+    required this.profilePicture,
+    this.bannedUntil,
   });
 
   factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);

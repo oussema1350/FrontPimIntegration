@@ -61,7 +61,7 @@ Future<String?> analyzeMedicationImage(String imageUrl) async {
     print('Using formatted URL: $imageUrl');
     
     // Use localhost with port 3000 directly, since that works in Postman
-    final String directUrl = "http://169.254.33.76:3000/medications/analyze";
+    final String directUrl = "http://169.254.57.241:3000/medications/analyze";
     print('Sending request to: $directUrl');
     
     // Create request payload exactly matching what works in Postman

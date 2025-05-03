@@ -113,6 +113,7 @@ class _LoginScreenState extends State<LoginScreen> {
               name: userInfo.name,
               email: userInfo.email,
               profilePicture: userInfo.profilePicture,
+              bannedUntil: userInfo.bannedUntil,
             );
             
             // Navigate to main screen

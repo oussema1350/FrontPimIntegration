@@ -23,6 +23,9 @@ User _$UserFromJson(Map<String, dynamic> json) => User(
       name: json['name'] as String,
       email: json['email'] as String,
       profilePicture: json['profilePicture'] as String?,
+      bannedUntil: json['bannedUntil'] == null
+          ? null
+          : DateTime.parse(json['bannedUntil'] as String),
     );
 
 Map<String, dynamic> _$UserToJson(User instance) => <String, dynamic>{
@@ -30,4 +33,5 @@ Map<String, dynamic> _$UserToJson(User instance) => <String, dynamic>{
       'name': instance.name,
       'email': instance.email,
       'profilePicture': instance.profilePicture,
+      'bannedUntil': instance.bannedUntil?.toIso8601String(),
     };
